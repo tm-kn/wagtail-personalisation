@@ -1,9 +1,11 @@
 from __future__ import absolute_import, unicode_literals
+import logging
 
 import re
 from datetime import datetime
 from importlib import import_module
 
+import pycountry
 from django.apps import apps
 from django.conf import settings
 from django.contrib.sessions.models import Session
@@ -18,7 +20,11 @@ from user_agents import parse
 from wagtail.admin.edit_handlers import (
     FieldPanel, FieldRowPanel, PageChooserPanel)
 
+from wagtail_personalisation.utils import get_client_ip
+
 SessionStore = import_module(settings.SESSION_ENGINE).SessionStore
+
+logger = logging.getLogger(__name__)
 
 
 @python_2_unicode_compatible
@@ -408,3 +414,45 @@ class UserIsLoggedInRule(AbstractBaseRule):
             'title': _('These visitors are'),
             'value': _('Logged in') if self.is_logged_in else _('Not logged in'),
         }
+
+
+COUNTRY_CHOICES = [(country.alpha_2.lower(), country.name)
+                   for country in pycountry.countries]
+
+
+class CountryOriginRule(AbstractBaseRule):
+    """
+    Test user against the country they have sent requests from.
+
+    Using this rule require setting up GeoIP2 on Django or using
+    CloudFlare geolocation detection.
+    """
+    country = models.CharField(max_length=2, choices=COUNTRY_CHOICES)
+
+    def get_cloudflare_country(self, request):
+        try:
+            return request.META['HTTP_CF_IPCOUNTRY'].lower()
+        except KeyError:
+            pass
+
+    def get_geoip_country(self, request):
+        try:
+            from django.contrib.gis.geoip2 import GeoIP2
+        except ImportError:
+            logger.info(
+                'GeoIP module is disabled. To use GeoIP for the country\n'
+                'origin rule please set it up as per documentation:\n'
+                'https://docs.djangoproject.com/en/stable/ref/contrib/gis/'
+                'geoip2/.')
+            return
+        return GeoIP2().country_code(get_client_ip(request)).lower()
+
+    def get_country(self, request):
+        # Prioritise CloudFlare country detection over GeoIP.
+        return self.get_cloudflare_country(request) or self.get_geoip_country(
+            request
+        )
+
+    def test_user(self, request=None):
+        print(self.get_country(request))
+        return (self.get_country(request) or '') == self.country.lower()

@@ -116,3 +116,12 @@ def can_delete_pages(pages, user):
         if not variant.permissions_for_user(user).can_delete():
             return False
     return True
+
+
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if not x_forwarded_for:
+        return request.META.get('REMOTE_ADDR')
+    # If there is a list of IPs provided, use the last one.
+    # This may not work on Google Cloud.
+    return x_forwarded_for.split(',')[-1].strip()
