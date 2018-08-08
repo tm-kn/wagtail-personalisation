@@ -454,5 +454,4 @@ class CountryOriginRule(AbstractBaseRule):
         )
 
     def test_user(self, request=None):
-        print(self.get_country(request))
         return (self.get_country(request) or '') == self.country.lower()

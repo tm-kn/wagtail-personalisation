@@ -56,6 +56,8 @@ def segment_user(page, request, serve_args, serve_kwargs):
     :type request: django.http.HttpRequest
 
     """
+    if getattr(request, '_skip_segmenting_user', False):
+        return
     adapter = get_segment_adapter(request)
     adapter.refresh()
 
