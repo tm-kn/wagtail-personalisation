@@ -9,9 +9,12 @@ class GetRequestSegmentMiddleware:
     def __call__(self, request):
         adapter = get_segment_adapter(request)
         setattr(request, '_skip_segmenting_user', True)
-        segments = Segment.objects.enabled().filter(pk__in=[
-            int(s) for s in request.GET.get('wagtail-segments', '').split(',')
-            if s
-        ])
+        segment_ids = []
+        for s in request.GET.get('wagtail-segments','').split(','):
+            try:
+                segment_ids.append(int(s))
+            except (ValueError, TypeError):
+                pass
+        segments = Segment.objects.enabled().filter(pk__in=segment_ids)
         adapter.set_segments(segments)
         return self.get_response(request)
