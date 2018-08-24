@@ -1,5 +1,7 @@
 from __future__ import absolute_import, unicode_literals
 
+from django.core.exceptions import ValidationError
+from django.forms.utils import ErrorList
 from django.utils.translation import ugettext_lazy as _
 from wagtail.core import blocks
 
@@ -15,11 +17,33 @@ def list_segment_choices():
 
 class PersonalisedStructBlock(blocks.StructBlock):
     """Struct block that allows personalisation per block."""
-
-    segment = blocks.ChoiceBlock(
+    segments = blocks.ListBlock(blocks.ChoiceBlock(
         choices=list_segment_choices,
         required=False, label=_("Personalisation segment"),
         help_text=_("Only show this content block for users in this segment"))
+    )
+
+    def clean(self, value):
+        cleaned_data = super().clean(value)
+        segments = cleaned_data['segments']
+        for segment_id in segments:
+            segment_id = int(segment_id)
+            if segment_id == -1 and len(segments) > 1:
+                raise ValidationError(
+                    'ValidationError in PersonalisedStructBlock',
+                    params={
+                        'segments': ErrorList([
+                            ValidationError('ValidationError in ListBlock',
+                            params=ErrorList([
+                                ValidationError('test')
+                                for i in range(len(segments))
+                                if i == 0 else None
+                            ])
+
+                        )])
+                    }
+                )
+        return cleaned_data
 
     def render(self, value, context=None):
         """Only render this content block for users in this segment.
@@ -35,20 +59,21 @@ class PersonalisedStructBlock(blocks.StructBlock):
         request = context['request']
         adapter = get_segment_adapter(request)
         user_segments = adapter.get_segments()
+        segment_ids = []
+        for segment in value['segments']:
+            try:
+                segment_ids.append(int(segment))
+            except (TypeError, ValueError):
+                continue
 
-        try:
-            segment_id = int(value['segment'])
-        except (ValueError, TypeError):
+        if not segment_ids:
             return ''
 
-        if segment_id > 0:
-            for segment in user_segments:
-                if segment.id == segment_id:
-                    return super(PersonalisedStructBlock, self).render(
-                        value, context)
-
-        if segment_id == -1:
+        if -1 in segment_ids:
             return super(PersonalisedStructBlock, self).render(
                 value, context)
 
-        return ''
+        for segment in user_segments:
+            if segment.id in segment_ids:
+                return super(PersonalisedStructBlock, self).render(
+                    value, context)
